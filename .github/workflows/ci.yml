@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: app/go.mod
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Rules are generated, checked and unit-tested
+        run: make test
+
+  drill:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: make up
+      - name: Chaos drill
+        run: make drill
+      - name: Publish measurements
+        if: always()
+        run: |
+          {
+            echo "### Chaos drill (lab profile)"
+            echo '```json'
+            cat results/drill.json 2>/dev/null || echo "no result"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=60
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

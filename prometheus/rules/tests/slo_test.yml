@@ -1,0 +1,77 @@
+# Unit tests for the production rules, run with promtool. Each case describes
+# traffic and states which alerts must (and must not) be firing.
+rule_files:
+  - ../slo.prod.rules.yml
+evaluation_interval: 1m
+
+tests:
+  # 10% errors, sustained: 20x the budget burn rate, so the fast-burn page fires.
+  - name: sustained 10 percent errors pages
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{route="/checkout",code="200"}'
+        values: '0+90x120'
+      - series: 'http_requests_total{route="/checkout",code="500"}'
+        values: '0+10x120'
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: SLOFastBurn
+        exp_alerts:
+          - exp_labels: {severity: page, slo: availability, service: shop-api}
+            exp_annotations:
+              summary: "Burning error budget at 14.4x or faster (1h and 5m windows): 2% of a 30-day budget gone in 1 hour"
+              runbook_url: "https://github.com/aryankasraee/sre-observability/blob/HEAD/runbooks/slo-burn.md"
+
+  # A 3-minute total outage after 90 healthy minutes is ~5% of the hour, below the
+  # 7.2% fast-burn threshold: the short window alone must not page. The healthy
+  # lead-in matters: with less than an hour of data the "1h" window is really
+  # shorter and overstates the error ratio.
+  - name: brief spike does not page
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{route="/checkout",code="200"}'
+        values: '0+100x90 9000+0x3 9000+100x60'
+      - series: 'http_requests_total{route="/checkout",code="500"}'
+        values: '0+0x90 0+100x3 300+0x60'
+    alert_rule_test:
+      - {eval_time: 91m, alertname: SLOFastBurn, exp_alerts: []}
+      # Spike ended at 93m. A short-window-only rule is still firing here.
+      - {eval_time: 96m, alertname: SLOFastBurn, exp_alerts: []}
+      - {eval_time: 120m, alertname: SLOFastBurn, exp_alerts: []}
+
+  # 2% errors is a 4x burn: too slow to page, but the 3x ticket alert must fire.
+  - name: slow bleed tickets but does not page
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{route="/checkout",code="200"}'
+        values: '0+98x500'
+      - series: 'http_requests_total{route="/checkout",code="500"}'
+        values: '0+2x500'
+    alert_rule_test:
+      - {eval_time: 400m, alertname: SLOFastBurn, exp_alerts: []}
+      - {eval_time: 400m, alertname: SLOSlowBurn, exp_alerts: []}
+      - eval_time: 400m
+        alertname: SLOBudgetBurnTicket
+        exp_alerts:
+          - exp_labels: {severity: ticket, slo: availability, service: shop-api}
+            exp_annotations:
+              summary: "Burning error budget at 3x or faster (1d and 2h windows): 10% of a 30-day budget gone in 1 day"
+              runbook_url: "https://github.com/aryankasraee/sre-observability/blob/HEAD/runbooks/slo-burn.md"
+
+  # No errors at all must never alert (and the "or vector(0)" must keep the
+  # recording rule defined when there are no 5xx series).
+  - name: healthy traffic is silent
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{route="/checkout",code="200"}'
+        values: '0+100x300'
+    alert_rule_test:
+      - {eval_time: 200m, alertname: SLOFastBurn, exp_alerts: []}
+      - {eval_time: 200m, alertname: SLOSlowBurn, exp_alerts: []}
+      - {eval_time: 200m, alertname: SLOBudgetBurnTicket, exp_alerts: []}
+    promql_expr_test:
+      - expr: slo:http_error_ratio:rate5m
+        eval_time: 100m
+        exp_samples:
+          - labels: 'slo:http_error_ratio:rate5m'
+            value: 0

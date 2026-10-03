@@ -1,0 +1,25 @@
+route:
+  receiver: default
+  group_by: [alertname, service]
+  group_wait: 5s
+  group_interval: 15s
+  repeat_interval: 1h
+  routes:
+    - matchers: [severity="page"]
+      receiver: pager
+    - matchers: [severity="ticket"]
+      receiver: tickets
+
+# No integrations on purpose: the lab proves routing and inhibition. In production
+# each receiver gets a real integration (pager, chat, ticket queue).
+receivers:
+  - name: default
+  - name: pager
+  - name: tickets
+
+# While the fast-burn page is firing, the slow-burn page for the same service is
+# redundant: one page per problem.
+inhibit_rules:
+  - source_matchers: [alertname="SLOFastBurn"]
+    target_matchers: [alertname="SLOSlowBurn"]
+    equal: [service]
