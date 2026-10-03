@@ -72,15 +72,15 @@ that Alertmanager routes it to the `pager` receiver, that the failing requests a
 searchable in Loki, that the dashboard is provisioned, and that the alert clears
 after the fault is removed.
 
-| Measurement (lab profile) | Value |
-|---|---|
-| Healthy baseline alerts | none |
-| Fault injected → `SLOFastBurn` firing | 21 s |
-| Fault removed → alert resolved | 14 s |
-| Routed to | `pager` |
-| Errors visible in Loki | yes |
+| Measurement (lab profile) | Laptop | GitHub Actions runner |
+|---|---|---|
+| Healthy baseline alerts | none | none |
+| Fault injected → `SLOFastBurn` firing | 21 s | 20 s |
+| Fault removed → alert resolved | 14 s | 14 s |
+| Routed to | `pager` | `pager` |
+| Errors visible in Loki | yes | yes |
 
-A single local run, with windows scaled down ~30x. It proves the signal path, not
+Single runs, with windows scaled down ~30x. It proves the signal path, not
 a production detection time.
 
 ## Runbooks
