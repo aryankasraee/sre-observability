@@ -29,7 +29,7 @@ echo "the failing requests are searchable in Loki"
 wait_for "error logs in Loki" 90 bash -c "curl -fsSG '$LOKI/loki/api/v1/query_range' --data-urlencode 'query={service=\"shop-api\"} | json | code >= 500' --data-urlencode 'since=5m' | jq -e '.data.result | length > 0'"
 
 echo "the dashboard is provisioned"
-curl -fsS -u admin:lab-admin "$GRAFANA/api/dashboards/uid/slo-overview" | jq -e '.dashboard.title' >/dev/null
+curl -fsS "$GRAFANA/api/dashboards/uid/slo-overview" | jq -e '.dashboard.title' >/dev/null
 
 echo "removing the fault"
 curl -fsS "$APP/admin/chaos?error_rate=0" >/dev/null
